@@ -2,81 +2,85 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*' # Push events to new tags like v1.0.0
+    branches: [ main ]
+    tags: [ 'v*' ]   # например v1.0.0
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+    name: Build for ${{ matrix.target.name }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        os: [linux]
-        arch: [amd64, arm64]
-        include:
-          - os: linux
-            arch: arm # For 32-bit ARM Linux
-          - os: linux
-            arch: mipsle # For ramips
+        target:
+          - { os: linux, arch: amd64,                name: linux-amd64 }
+          - { os: linux, arch: arm64,                name: linux-arm64 }
+          - { os: linux, arch: arm,   goarm: '7',    name: linux-armv7 }
+          - { os: linux, arch: mipsle, gomips: softfloat, name: linux-mipsel-softfloat }
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22' # Use a recent Go version
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
 
-    - name: Install UPX
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y upx-ucl
-      shell: bash
+      # UPX делаем опциональным: включай репо-variable/secret DO_UPX=1 при необходимости
+      - name: Install UPX (optional)
+        if: ${{ env.DO_UPX == '1' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
 
-    - name: Build backend
-      run: |
-        cd backend
-        BINARY_NAME="voucher_server"
-        GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -ldflags="-s -w" -o $BINARY_NAME .
-        mv $BINARY_NAME ../ # Move to root of workspace
-      shell: bash
+      - name: Build backend (static, CGO disabled)
+        env:
+          CGO_ENABLED: '0'
+          GOOS:   ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          GOARM:  ${{ matrix.target.goarm }}
+          GOMIPS: ${{ matrix.target.gomips }}
+          # если используешь modernc.org/sqlite:
+          GOTAGS: 'sqlite_omit_load_extension'
+          LDFLAGS: '-s -w -X main.version=${{ github.ref_name }}'
+        run: |
+          set -eux
+          cd backend
+          BINARY_NAME="voucher_server"
+          go build -trimpath -tags "$GOTAGS" -ldflags "$LDFLAGS" -o "$BINARY_NAME" .
+          mv "$BINARY_NAME" ../
 
-    - name: Compress binary with UPX
-      run: |
-        upx --best --lzma voucher_server
-      shell: bash
+      - name: (Optional) Compress binary with UPX
+        if: ${{ env.DO_UPX == '1' }}
+        run: |
+          upx --best --lzma voucher_server || true
 
-    - name: Create release archive and checksum
-      run: |
-        RELEASE_NAME="RoseNet-Portal-${{ matrix.os }}-${{ matrix.arch }}"
-        
-        # Create a temporary directory to stage files
-        mkdir -p "${RELEASE_NAME}"
-        cp "voucher_server" "${RELEASE_NAME}/"
-        cp -r frontend "${RELEASE_NAME}/"
-        cp nodogsplash/nodogsplash.conf "${RELEASE_NAME}/"
-        cp LICENSE "${RELEASE_NAME}/"
-        cp -r scripts "${RELEASE_NAME}/"
-        
-        ARCHIVE_NAME="${RELEASE_NAME}.tar.gz"
-        tar -czvf "${ARCHIVE_NAME}" "${RELEASE_NAME}"
-        
-        # Generate SHA256 checksum
-        sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
-        
-        rm -rf "${RELEASE_NAME}" # Clean up temporary directory
-      shell: bash
+      - name: Create release archive and checksum
+        run: |
+          set -eux
+          RELEASE_NAME="RoseNet-Portal-${{ matrix.target.name }}"
+          mkdir -p "${RELEASE_NAME}"
+          cp "voucher_server" "${RELEASE_NAME}/"
+          cp -r frontend "${RELEASE_NAME}/"
+          cp -r scripts "${RELEASE_NAME}/"
+          # если нужен пример конфига, клади как шаблон:
+          # cp nodogsplash/nodogsplash.conf "${RELEASE_NAME}/nodogsplash.example.conf"
+          chmod +x "${RELEASE_NAME}/scripts/"*.sh || true
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.os }}-${{ matrix.arch }}
-        path: |
-          RoseNet-Portal-${{ matrix.os }}-${{ matrix.arch }}.*
+          ARCHIVE_NAME="${RELEASE_NAME}.tar.gz"
+          tar -czf "${ARCHIVE_NAME}" "${RELEASE_NAME}"
+          sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+
+          rm -rf "${RELEASE_NAME}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.name }}
+          path: |
+            RoseNet-Portal-${{ matrix.target.name }}.tar.gz
+            RoseNet-Portal-${{ matrix.target.name }}.tar.gz.sha256
 
   release:
     name: Create GitHub Release
@@ -87,17 +91,17 @@ jobs:
       contents: write
 
     steps:
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: List downloaded artifacts
-      run: ls -R artifacts
+      - name: List downloaded artifacts
+        run: ls -R artifacts
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: artifacts/**/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*   # прикрепит tar.gz и .sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
