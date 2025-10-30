@@ -58,10 +58,10 @@ The integration with NoDogSplash is fundamental to the captive portal functional
 
 1.  A user connects to the Wi-Fi network.
 2.  NoDogSplash intercepts the user's initial HTTP request and redirects them to its `splash.html` page (`/etc/nodogsplash/htdocs/splash.html`).
-3.  This `splash.html` contains a meta-refresh that immediately redirects the user to the RoseNet Access Portal's Go-powered voucher page (e.g., `http://192.168.100.1:7891`), forwarding essential parameters like `ip`, `mac`, and `token`.
+3.  This `splash.html` contains a meta-refresh that immediately redirects the user to the RoseNet Access Portal's Go-powered voucher page (e.g., `http://192.168.9.1:7891`), forwarding essential parameters like `ip`, `mac`, and `token`.
 4.  The user enters a valid voucher code on the `index.html` page.
 5.  The frontend JavaScript validates the voucher with the Go backend.
-6.  Upon successful validation, the JavaScript constructs a special NoDogSplash authentication URL (e.g., `http://192.168.100.1:2050/nodogsplash_auth/?tok=...`) and redirects the user.
+6.  Upon successful validation, the JavaScript constructs a special NoDogSplash authentication URL (e.g., `http://192.168.9.1:2050/nodogsplash_auth/?tok=...`) and redirects the user.
 7.  NoDogSplash processes this request, validates the token, and grants the user internet access for the duration specified by the voucher.
 
 ## Installation & Deployment
