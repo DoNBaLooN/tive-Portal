@@ -126,7 +126,7 @@ cat << 'EOF' > /etc/nodogsplash/htdocs/splash.html
 <head>
     <meta charset="utf-8" />
     <title>Connecting...</title>
-    <meta http-equiv="refresh" content="0; url=http://192.168.100.1:7891/?ip=$clientip&amp;mac=$clientmac&amp;token=$tok" />
+    <meta http-equiv="refresh" content="0; url=http://192.168.9.1:7891/?ip=$clientip&amp;mac=$clientmac&amp;token=$tok" />
 </head>
 <body>
     <p>Please wait, you are being redirected to the login page...</p>
@@ -140,4 +140,4 @@ echo "Restarting NoDogSplash..."
 
 echo "Installation complete!"
 echo "Your voucher server should be running and integrated with NoDogSplash."
-echo "You can access the admin panel at http://192.168.100.1:7891/admin.html"
+echo "You can access the admin panel at http://192.168.9.1:7891/admin.html"
